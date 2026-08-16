@@ -12,8 +12,6 @@ with open(BASE_DIR / "config.json", "r", encoding="utf-8") as f:
 
 pre_order_days = int(config.get("pre_order_days", 1))
 
-prices = config.get("prices", config.get("цены", {}))
-
 products = {}
 
 with open(BASE_DIR / "products.csv", "r", encoding="utf-8-sig", newline="") as f:
@@ -25,7 +23,8 @@ with open(BASE_DIR / "products.csv", "r", encoding="utf-8-sig", newline="") as f
         "brand",
         "size",
         "store_id",
-        "stock_count"
+        "stock_count",
+        "current_price"
     }
 
     missing = required - set(reader.fieldnames or [])
@@ -41,17 +40,40 @@ with open(BASE_DIR / "products.csv", "r", encoding="utf-8-sig", newline="") as f
         if not sku:
             continue
 
+        size = row["size"].strip().lower().replace(" ", "")
+
+        current_price = row["current_price"].strip()
+
+        if current_price:
+            current_price = int(float(current_price))
+        else:
+            current_price = 0
+
         products.setdefault(sku, {
             "model": row["model"].strip(),
             "brand": row["brand"].strip(),
-            "size": row["size"].strip().lower().replace(" ", ""),
+            "size": size,
+            "current_price": current_price,
             "availabilities": []
         })
 
         products[sku]["availabilities"].append({
             "store_id": row["store_id"].strip(),
-            "stock_count": int(row["stock_count"] or 0)
+            "stock_count": int(float(row["stock_count"] or 0))
         })
+
+
+# ТЕК ОСЫ 3 ӨЛШЕМНІҢ БАҒАСЫ ӨЗГЕРЕДІ
+special_prices = {
+    "160x80": 49990,
+    "80x160": 49990,
+
+    "100x70": 29990,
+    "70x100": 29990,
+
+    "50x70": 14990,
+    "70x50": 14990
+}
 
 
 register_namespace("", "kaspiShopping")
@@ -79,12 +101,12 @@ for sku, product in products.items():
 
     size = product["size"]
 
-    if size not in prices:
-        raise ValueError(
-            f"{sku}: {size} өлшеміне баға config.json ішінде жоқ"
-        )
-
-    price = int(prices[size])
+    # 3 негізгі өлшемнің бағасын жаңартамыз
+    # Қалған барлық өлшем current_price бағасын сақтайды
+    if size in special_prices:
+        price = special_prices[size]
+    else:
+        price = product["current_price"]
 
     offer = SubElement(
         offers,
@@ -127,6 +149,7 @@ for sku, product in products.items():
         offer,
         "price"
     ).text = str(price)
+
 
 output = BASE_DIR / "kaspi.xml"
 
