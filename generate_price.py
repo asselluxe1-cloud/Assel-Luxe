@@ -11,7 +11,8 @@ with open(BASE_DIR / "config.json", "r", encoding="utf-8") as f:
     config = json.load(f)
 
 pre_order_days = int(config.get("pre_order_days", 1))
-prices = config.get("prices", {})
+
+prices = config.get("prices", config.get("цены", {}))
 
 products = {}
 
@@ -28,6 +29,7 @@ with open(BASE_DIR / "products.csv", "r", encoding="utf-8-sig", newline="") as f
     }
 
     missing = required - set(reader.fieldnames or [])
+
     if missing:
         raise ValueError(
             f"products.csv ішінде бағандар жетіспейді: {', '.join(sorted(missing))}"
@@ -69,7 +71,7 @@ root = Element(
 )
 
 SubElement(root, "company").text = "Assel Luxe"
-SubElement(root, "merchantid").text = "ASSel-Luxe"
+SubElement(root, "merchantid").text = "Assel-Luxe"
 
 offers = SubElement(root, "offers")
 
@@ -129,6 +131,7 @@ for sku, product in products.items():
 output = BASE_DIR / "kaspi.xml"
 
 tree = ElementTree(root)
+
 tree.write(
     output,
     encoding="utf-8",
