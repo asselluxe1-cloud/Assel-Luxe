@@ -9,335 +9,127 @@ BASE_DIR = Path(__file__).resolve().parent
 with open(BASE_DIR / "config.json", "r", encoding="utf-8") as f:
     config = json.load(f)
 
-# PreOrder = 1 күн
-PRE_ORDER_DAYS = 1
+pre_order_days = int(config.get("pre_order_days", 1))
+merchant_id = str(config.get("merchantid", ""))
+default_store_id = str(config.get("store_id", ""))
 
 products = {}
 
-with open(
-    BASE_DIR / "products.csv",
-    "r",
-    encoding="utf-8-sig",
-    newline=""
-) as f:
-
+with open(BASE_DIR / "products.csv", "r", encoding="utf-8-sig", newline="") as f:
     reader = csv.DictReader(f)
 
-    required = {
-        "sku",
-        "model",
-        "brand",
-        "size",
-        "store_id",
-        "stock_count",
-        "current_price"
-    }
-
+    required = {"sku", "model", "brand", "size", "store_id", "stock_count", "current_price"}
     missing = required - set(reader.fieldnames or [])
-
     if missing:
-        raise ValueError(
-            "products.csv ішінде бағандар жетіспейді: "
-            + ", ".join(sorted(missing))
-        )
+        raise ValueError("products.csv ішінде бағандар жетіспейді: " + ", ".join(sorted(missing)))
 
     for row in reader:
+        # Тек Assel Decor. Assel Luxe бұл XML-ге кірмейді.
+        if row["brand"].strip().lower() != "assel-decor":
+            continue
 
         sku = row["sku"].strip()
-
         if not sku:
             continue
 
         size = row["size"].strip().lower().replace(" ", "")
+        model = row["model"].strip()
+        store_id = row["store_id"].strip() or default_store_id
+        stock_count = int(float(row["stock_count"] or 0))
+        current_price = int(float(row["current_price"])) if row["current_price"].strip() else 0
 
-        current_price_text = row["current_price"].strip()
-
-        current_price = (
-            int(float(current_price_text))
-            if current_price_text
-            else 0
-        )
-
-        products.setdefault(
-            sku,
-            {
-                "model": row["model"].strip(),
+        if sku not in products:
+            products[sku] = {
+                "model": model,
                 "brand": row["brand"].strip(),
                 "size": size,
                 "current_price": current_price,
                 "availabilities": []
             }
-        )
 
-        products[sku]["availabilities"].append(
-            {
-                "store_id": row["store_id"].strip(),
-                "stock_count": int(
-                    float(row["stock_count"] or 0)
-                )
-            }
-        )
+        products[sku]["availabilities"].append({
+            "store_id": store_id,
+            "stock_count": stock_count
+        })
 
+def normalize_size(size):
+    size = size.lower().replace(" ", "")
+    return {
+        "80x160": "160x80",
+        "70x100": "100x70",
+        "70x50": "50x70",
+    }.get(size, size)
 
-# ============================================================
-# БАҒА ЕРЕЖЕЛЕРІ
-# ============================================================
+def calculate_price(product):
+    model = product["model"].lower()
+    size = normalize_size(product["size"])
+    current_price = product["current_price"]
 
-# Подсветка
-BACKLIGHT_PRICES = {
-    "160x80": 74990,
-    "80x160": 74990,
-    "100x70": 44990,
-    "70x100": 44990,
-    "50x70": 19990,
-    "70x50": 19990
-}
+    # Подсветка
+    if "подсвет" in model:
+        prices = {"160x80": 74990, "100x70": 44990, "50x70": 19990}
+        if size in prices:
+            return prices[size]
 
-# Сағатпен
-CLOCK_PRICES = {
-    "160x80": 59990,
-    "80x160": 59990,
-    "100x70": 39990,
-    "70x100": 39990
-}
+    # Сағатпен / сағат
+    if "час" in model or "часы" in model:
+        prices = {"160x80": 59990, "100x70": 39990}
+        if size in prices:
+            return prices[size]
 
-# Қарапайым картина
-ORDINARY_PRICES = {
-    "160x80": 49990,
-    "80x160": 49990,
-    "100x70": 39990,
-    "70x100": 39990,
-    "50x70": 14000,
-    "70x50": 14000
-}
+    # Модуль: тек 50x70 және 100x70 өзгереді.
+    # 80x80 және басқа модуль өлшемдері бұрынғы бағасында қалады.
+    if "модуль" in model:
+        prices = {"50x70": 74990, "100x70": 119990}
+        return prices.get(size, current_price)
 
-# Модуль — ТЕК нақты көрсетілгендері
-MODULE_PRICES = {
-    "50x70": 74990,
-    "70x50": 74990,
-    "100x70": 119990,
-    "70x100": 119990
-}
-
-
-def has_backlight(model):
-    text = model.lower()
-
-    return (
-        "подсвет" in text
-        or "подсветка" in text
-        or "светом" in text
-        or "жарық" in text
-    )
-
-
-def has_clock(model):
-    text = model.lower()
-
-    return (
-        "часы" in text
-        or "часами" in text
-        or "час " in text
-        or "сағат" in text
-        or "clock" in text
-    )
-
-
-def is_module(model):
-    text = model.lower()
-
-    return (
-        "модуль" in text
-        or "модульная" in text
-        or "модульная картина" in text
-    )
-
-
-def get_price(product):
-
-    model = product["model"]
-    size = product["size"]
-
-    # --------------------------------------------------------
-    # 1. МОДУЛЬ
-    # --------------------------------------------------------
-    #
-    # 50x70 модуль = 74 990
-    # 100x70 модуль = 119 990
-    #
-    # 80x80 және басқа модульдерге ТИМЕЙМІЗ.
-    # --------------------------------------------------------
-
-    if is_module(model):
-
-        if size in MODULE_PRICES:
-            return MODULE_PRICES[size]
-
-        return product["current_price"]
-
-
-    # --------------------------------------------------------
-    # 2. САҒАТ + ПОДСВЕТКА / САҒАТТЫ КАРТИНА
-    # --------------------------------------------------------
-
-    if has_clock(model):
-
-        if size in CLOCK_PRICES:
-            return CLOCK_PRICES[size]
-
-        return product["current_price"]
-
-
-    # --------------------------------------------------------
-    # 3. ПОДСВЕТКА
-    # --------------------------------------------------------
-
-    if has_backlight(model):
-
-        if size in BACKLIGHT_PRICES:
-            return BACKLIGHT_PRICES[size]
-
-        # Басқа өлшемдердің бағасын өзгертпейміз
-        return product["current_price"]
-
-
-    # --------------------------------------------------------
-    # 4. ҚАРАПАЙЫМ КАРТИНА
-    # --------------------------------------------------------
-
-    if size in ORDINARY_PRICES:
-        return ORDINARY_PRICES[size]
-
-
-    # --------------------------------------------------------
-    # 5. ҚАЛҒАНЫНЫҢ БӘРІ
-    # --------------------------------------------------------
-    #
-    # Стандарт емес өлшемдер
-    # Басқа стандарт өлшемдер
-    # Басқа модульдер
-    # Басқа подсветкалар
-    #
-    # БАРЛЫҒЫНЫҢ БҰРЫНҒЫ БАҒАСЫ САҚТАЛАДЫ.
-    # --------------------------------------------------------
-
-    return product["current_price"]
-
-
-# ============================================================
-# KASPI XML
-# ============================================================
+    # Қарапайым картиналар
+    prices = {"160x80": 49990, "100x70": 39990, "50x70": 14000}
+    return prices.get(size, current_price)
 
 register_namespace("", "kaspiShopping")
 
-date_string = datetime.now(
-    timezone.utc
-).strftime("%Y-%m-%dT%H:%M:%SZ")
-
+date_string = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 root = Element(
-    "{kaspiShopping}kaspi_catalog",
+    "kaspi_catalog",
     {
         "date": date_string,
-        "{http://www.w3.org/2001/XMLSchema-instance}schemaLocation":
-            "kaspiShopping http://kaspi.kz/kaspishopping.xsd"
+        "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
+        "xsi:schemaLocation": "kaspiShopping http://kaspi.kz/kaspishopping.xsd"
     }
 )
 
-
-SubElement(
-    root,
-    "{kaspiShopping}company"
-).text = "Assel Luxe"
-
-
-SubElement(
-    root,
-    "{kaspiShopping}merchantid"
-).text = "Assel-Luxe"
-
-
-offers = SubElement(
-    root,
-    "{kaspiShopping}offers"
-)
-
-
-# ============================================================
-# ТАУАРЛАР
-# ============================================================
+SubElement(root, "company").text = "Assel Decor"
+SubElement(root, "merchantid").text = merchant_id
+offers = SubElement(root, "offers")
 
 for sku, product in products.items():
+    offer = SubElement(offers, "offer", {"sku": sku})
+    SubElement(offer, "model").text = product["model"]
+    SubElement(offer, "brand").text = product["brand"]
 
-    price = get_price(product)
-
-    offer = SubElement(
-        offers,
-        "{kaspiShopping}offer",
-        {
-            "sku": sku
-        }
-    )
-
-    SubElement(
-        offer,
-        "{kaspiShopping}model"
-    ).text = product["model"]
-
-
-    SubElement(
-        offer,
-        "{kaspiShopping}brand"
-    ).text = product["brand"]
-
-
-    availabilities = SubElement(
-        offer,
-        "{kaspiShopping}availabilities"
-    )
-
-
+    availabilities = SubElement(offer, "availabilities")
     for availability in product["availabilities"]:
-
         SubElement(
             availabilities,
-            "{kaspiShopping}availability",
+            "availability",
             {
                 "available": "yes",
                 "storeId": availability["store_id"],
-                "preOrder": str(PRE_ORDER_DAYS),
-                "stockCount": str(
-                    availability["stock_count"]
-                )
+                "preOrder": str(pre_order_days),
+                "stockCount": str(availability["stock_count"])
             }
         )
 
-
-    SubElement(
-        offer,
-        "{kaspiShopping}price"
-    ).text = str(price)
-
-
-# ============================================================
-# ФАЙЛДЫ САҚТАУ
-# ============================================================
+    SubElement(offer, "price").text = str(calculate_price(product))
 
 output = BASE_DIR / "kaspi.xml"
+ElementTree(root).write(output, encoding="utf-8", xml_declaration=True)
 
-tree = ElementTree(root)
-
-tree.write(
-    output,
-    encoding="utf-8",
-    xml_declaration=True
-)
-
-
-print("====================================")
-print("Kaspi XML generated successfully")
-print(f"Products: {len(products)}")
-print("PreOrder: 1 day")
-print("Price rules applied")
-print(f"File: {output}")
-print("====================================")
+print("Kaspi XML дайын.")
+print(f"Assel Decor тауар саны: {len(products)}")
+print(f"PreOrder: {pre_order_days} күн")
+print(f"Merchant ID: {merchant_id}")
+print(f"Store ID: {default_store_id}")
+print(f"XML: {output}")
