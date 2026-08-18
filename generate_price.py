@@ -9,7 +9,7 @@ BASE_DIR = Path(__file__).resolve().parent
 with open(BASE_DIR / "config.json", "r", encoding="utf-8") as f:
     config = json.load(f)
 
-pre_order_days = int(config.get("pre_order_days", 1))
+pre_order_days = 2
 merchant_id = str(config.get("merchantid", ""))
 default_store_id = str(config.get("store_id", ""))
 
@@ -18,20 +18,12 @@ products = {}
 with open(BASE_DIR / "products.csv", "r", encoding="utf-8-sig", newline="") as f:
     reader = csv.DictReader(f)
 
-    required = {
-        "sku", "model", "brand", "size",
-        "store_id", "stock_count", "current_price"
-    }
-
+    required = {"sku", "model", "brand", "size", "store_id", "stock_count", "current_price"}
     missing = required - set(reader.fieldnames or [])
     if missing:
-        raise ValueError(
-            "products.csv ішінде бағандар жетіспейді: "
-            + ", ".join(sorted(missing))
-        )
+        raise ValueError("products.csv ішінде бағандар жетіспейді: " + ", ".join(sorted(missing)))
 
     for row in reader:
-        # ТЕК ASSEL LUXE
         if row["brand"].strip().lower() != "assel-luxe1":
             continue
 
@@ -43,26 +35,15 @@ with open(BASE_DIR / "products.csv", "r", encoding="utf-8-sig", newline="") as f
         model = row["model"].strip()
         store_id = row["store_id"].strip() or default_store_id
         stock_count = int(float(row["stock_count"] or 0))
-        current_price = (
-            int(float(row["current_price"]))
-            if row["current_price"].strip()
-            else 0
-        )
+        current_price = int(float(row["current_price"])) if row["current_price"].strip() else 0
 
-        if sku not in products:
-            products[sku] = {
-                "model": model,
-                "brand": row["brand"].strip(),
-                "size": size,
-                "current_price": current_price,
-                "availabilities": []
-            }
-
-        products[sku]["availabilities"].append({
-            "store_id": store_id,
-            "stock_count": stock_count
-        })
-
+        products[sku] = {
+            "model": model,
+            "brand": row["brand"].strip(),
+            "size": size,
+            "current_price": current_price,
+            "availabilities": [{"store_id": store_id, "stock_count": stock_count}]
+        }
 
 def normalize_size(size):
     return {
@@ -71,146 +52,90 @@ def normalize_size(size):
         "70x50": "50x70",
     }.get(size.lower().replace(" ", ""), size.lower().replace(" ", ""))
 
-
 def calculate_price(product):
     model = product["model"].lower()
     size = normalize_size(product["size"])
     current_price = product["current_price"]
 
-    # Подсветка
-    if "подсвет" in model:
-        prices = {
-            "160x80": 74990,
-            "100x70": 44990,
-            "50x70": 19990
-        }
-        if size in prices:
-            return prices[size]
+    # Подсветка немесе сағат: тек көрсетілген негізгі өлшемдер
+    has_light = "подсвет" in model
+    has_clock = any(x in model for x in ("час", "часы", "сағат"))
 
-    # Сағатпен
-    if "час" in model or "часы" in model or "сағат" in model:
-        prices = {
-            "160x80": 59990,
-            "100x70": 39990
+    if has_light or has_clock:
+        special_prices = {
+            "160x80": 75000,
+            "100x70": 45000,
+            "50x70": 25000,
         }
-        if size in prices:
-            return prices[size]
+        if size in special_prices:
+            return special_prices[size]
 
-    # Модуль: тек нақты екі өлшем.
-    # 80x80 және басқа модульдер бұрынғы бағасында қалады.
+    # 3 бөліктен тұратын 50x70/100x70 модульдер.
+    # Файлда 3 бөлік деген жеке белгі жоқ, сондықтан бар модульдердің
+    # ішінен 75 000 болған 50x70 және 100x70 модульдерді ғана ұстаймыз.
     if "модуль" in model:
-        prices = {
-            "50x70": 74990,
-            "100x70": 119990
-        }
-        return prices.get(size, current_price)
+        if size == "50x70" and current_price == 74990:
+            return 75000
+        if size == "100x70" and current_price == 75000:
+            return 75000
+        # Басқа модульдердің бағасына тимейміз.
+        return current_price
 
-    # Қарапайым картина
-    prices = {
+    # Қарапайым картиналар
+    simple_prices = {
         "160x80": 49990,
         "100x70": 39990,
-        "50x70": 14000
+        "50x70": 14990,
     }
 
-    return prices.get(size, current_price)
-
-
-# ------------------------------------------------------------
-# ASSEL LUXE DESCRIPTION
-# ------------------------------------------------------------
+    return simple_prices.get(size, current_price)
 
 description = """✨ Assel Luxe — премиум кристалды картиналар | Премиальные кристальные картины | Premium Crystal Art
-
 💎 5 қабатты заманауи технология | 5-слойная технология | 5-Layer Technology
 🔹 Кристалл тастар | Кристальные камни | Crystal Stones — жарқыраған, сәнді көрініс / роскошный блеск / luxurious shine.
 🔹 Эпоксидті шайыр | Эпоксидная смола | Epoxy Resin — көлем, тереңдік және жылтыр эффект / объём, глубина и глянец / depth, volume and glossy finish.
 🔹 UV PRINT — қанық түстер және анық сурет / яркие цвета и чёткое изображение / vivid colors and sharp image.
 🔹 МДФ негіз | Основа из МДФ | MDF Base — берік және сапалы / прочная и надёжная / durable and reliable.
 🔹 Алтын түсті алюминий жақтау | Золотая алюминиевая рама | Gold Aluminum Frame — дайын премиум көрініс / завершённый премиальный вид / premium finished look.
-
 🇰🇿 Қазақстанда жасалады | Произведено в Казахстане | Made in Kazakhstan
 ✨ 90% қол еңбегі | 90% ручная работа | 90% Handmade
 🎨 Жеке тапсырыс | Индивидуальный заказ | Custom Order
-⏳ Дайындау мерзімі — 1 күн | Срок изготовления — 1 день | Production time — 1 day
-
+⏳ Дайындау мерзімі — 1 күн | Срок изготовления — 1 дня | Production time — 1 days
 💫 Assel Luxe — жай ғана картина емес, үйге сән, жарық және ерекше атмосфера сыйлайтын интерьердің премиум бөлігі.
-Assel Luxe — не просто картина, а стильный премиальный элемент интерьера, создающий красоту и особую атмосферу.
+Assel Luxe— не просто картина, а стильный премиальный элемент интерьера, создающий красоту и особую атмосферу.
 Assel Luxe — more than a painting, it is a premium interior element that brings beauty, elegance and a special atmosphere to your home."""
 
-
 register_namespace("", "kaspiShopping")
-
 date_string = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-root = Element(
-    "kaspi_catalog",
-    {
-        "date": date_string,
-        "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
-        "xsi:schemaLocation":
-            "kaspiShopping http://kaspi.kz/kaspishopping.xsd"
-    }
-)
-
+root = Element("kaspi_catalog", {
+    "date": date_string,
+    "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
+    "xsi:schemaLocation": "kaspiShopping http://kaspi.kz/kaspishopping.xsd"
+})
 SubElement(root, "company").text = "Assel Luxe"
 SubElement(root, "merchantid").text = merchant_id
-
 offers = SubElement(root, "offers")
 
 for sku, product in products.items():
+    offer = SubElement(offers, "offer", {"sku": sku})
+    SubElement(offer, "model").text = product["model"]
+    SubElement(offer, "brand").text = product["brand"]
+    SubElement(offer, "description").text = description
 
-    offer = SubElement(
-        offers,
-        "offer",
-        {"sku": sku}
-    )
-
-    SubElement(
-        offer,
-        "model"
-    ).text = product["model"]
-
-    SubElement(
-        offer,
-        "brand"
-    ).text = product["brand"]
-
-    SubElement(
-        offer,
-        "description"
-    ).text = description
-
-    availabilities = SubElement(
-        offer,
-        "availabilities"
-    )
-
+    availabilities = SubElement(offer, "availabilities")
     for availability in product["availabilities"]:
+        SubElement(availabilities, "availability", {
+            "available": "yes",
+            "storeId": availability["store_id"],
+            "preOrder": str(pre_order_days),
+            "stockCount": str(availability["stock_count"])
+        })
 
-        SubElement(
-            availabilities,
-            "availability",
-            {
-                "available": "yes",
-                "storeId": availability["store_id"],
-                "preOrder": str(pre_order_days),
-                "stockCount": str(availability["stock_count"])
-            }
-        )
-
-    SubElement(
-        offer,
-        "price"
-    ).text = str(calculate_price(product))
-
+    SubElement(offer, "price").text = str(calculate_price(product))
 
 output = BASE_DIR / "kaspi.xml"
-
-ElementTree(root).write(
-    output,
-    encoding="utf-8",
-    xml_declaration=True
-)
+ElementTree(root).write(output, encoding="utf-8", xml_declaration=True)
 
 print("Kaspi XML дайын.")
 print(f"Assel Luxe тауар саны: {len(products)}")
