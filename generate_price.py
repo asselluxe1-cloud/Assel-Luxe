@@ -166,12 +166,17 @@ description = """✨ Assel Luxe — премиум кристалды карти
 Assel Luxe — не просто картина, а стильный премиальный элемент интерьера, создающий красоту и особую атмосферу.
 Assel Luxe — more than a painting, it is a premium interior element that brings beauty, elegance and a special atmosphere to your home."""
 
-register_namespace("", "kaspiShopping")
+KASPI_NS = "kaspiShopping"
+XSI_NS = "http://www.w3.org/2001/XMLSchema-instance"
 
-date_string = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+register_namespace("", KASPI_NS)
+register_namespace("xsi", XSI_NS)
+
+def q(tag):
+    return f"{{{KASPI_NS}}}{tag}"
 
 root = Element(
-    "kaspi_catalog",
+    q("kaspi_catalog"),
     {
         "date": date_string,
         "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
@@ -179,33 +184,16 @@ root = Element(
             "kaspiShopping http://kaspi.kz/kaspishopping.xsd"
     }
 )
-
-SubElement(root, "company").text = "Assel Luxe"
-SubElement(root, "merchantid").text = merchant_id
-offers = SubElement(root, "offers")
-
-for sku, product in products.items():
-    offer = SubElement(offers, "offer", {"sku": sku})
-
-    SubElement(offer, "model").text = product["model"]
-    SubElement(offer, "brand").text = product["brand"]
-    SubElement(offer, "description").text = description
-
-    availabilities = SubElement(offer, "availabilities")
-
-    for availability in product["availabilities"]:
-        SubElement(
-            availabilities,
-            "availability",
-            {
-                "available": "yes",
-                "storeId": availability["store_id"],
-                "preOrder": str(pre_order_days),
-                "stockCount": str(availability["stock_count"])
-            }
-        )
-
-    SubElement(offer, "price").text = str(calculate_price(product))
+SubElement(root, q("company"))
+SubElement(root, q("merchantid"))
+SubElement(root, q("offers"))
+SubElement(offers, q("offer"))
+SubElement(offer, q("model"))
+SubElement(offer, q("brand"))
+SubElement(offer, q("description"))
+SubElement(offer, q("availabilities"))
+SubElement(availabilities, q("availability"))
+SubElement(offer, q("price"))
 
 output = BASE_DIR / "kaspi.xml"
 
