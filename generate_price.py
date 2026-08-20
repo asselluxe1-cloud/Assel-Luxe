@@ -14,7 +14,7 @@ BASE_DIR = Path(__file__).resolve().parent
 with open(BASE_DIR / "config.json", "r", encoding="utf-8") as f:
     config = json.load(f)
 
-PRE_ORDER_DAYS = 2
+PRE_ORDER_DAYS = 1
 
 merchant_id = str(config.get("merchantid", ""))
 default_store_id = str(config.get("store_id", ""))
